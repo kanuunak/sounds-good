@@ -17,7 +17,7 @@
 
 | | |
 |---|---|
-| OS | Linux. Windows 는 **WSL2(Ubuntu)** 안에서 설치하세요(작성자가 직접 검증하지는 못했습니다). |
+| OS | Linux. Windows 는 **WSL2(Ubuntu)** 안에서 설치하세요(작성자가 직접 검증하지는 못했습니다). **macOS 는 아직 지원하지 않습니다** — 설치 목록이 Linux + NVIDIA 전용이라 패키지 설치 단계에서 실패합니다. |
 | GPU | NVIDIA, VRAM 8GB 이상 권장 (음성 인식에 필요. CPU 로도 돌지만 매우 느립니다) |
 | Python | 3.11 |
 | 그 외 | `ffmpeg`, [Anki](https://apps.ankiweb.net/), HuggingFace 계정 |
