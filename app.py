@@ -266,9 +266,11 @@ def _status(text: str, kind: str = "loading") -> str:
     return f'<div class="{cls}"><span>{icon}</span><span>{_e(text)}</span></div>'
 
 
-def _cards_html(cards: list[dict]) -> str:
+def _cards_html(cards: list[dict], note: bool = True, empty: str | None = None) -> str:
+    """카드 목록 HTML. note=False 면 맨 위 안내문을 빼고(카드 검색 탭), lesson_date 가 있으면 날짜 태그를 단다."""
     if not cards:
-        return f'<div class="sg-status"><span>{_e(T("새 카드가 없습니다.", "No new cards."))}</span></div>'
+        msg = empty or T("새 카드가 없습니다.", "No new cards.")
+        return f'<div class="sg-status"><span>{_e(msg)}</span></div>'
     front_lab = T("앞면 — Anki가 먼저 보여주는 면", "FRONT — what Anki shows first")
     flip_lab = T("뒤집기 (정답 보기)", "Flip the card")
     back_lab = T("뒷면 — 이렇게 말하면 됩니다", "BACK — say it like this")
@@ -279,7 +281,7 @@ def _cards_html(cards: list[dict]) -> str:
            "오답을 반복해서 다시 읽으면 그 오답이 각인되기 때문입니다.",
            "The front shows <b>only the Korean meaning</b>. Your original mistake appears only after you "
            "flip — re-reading your own wrong sentence would just burn it in.")
-    out = [f'<div class="sg-note">🃏 {d2}</div>']
+    out = [f'<div class="sg-note">🃏 {d2}</div>'] if note else []
     for c in cards:
         ctype = (c.get("card_type") or "").lower()
         badge = ""
@@ -288,7 +290,8 @@ def _cards_html(cards: list[dict]) -> str:
             badge = f'<span class="{cls}">{_e(ctype)}</span>'
         tags = "".join(
             f'<span class="sg-tag">{_e(v)}</span>'
-            for v in (_issue_label(c.get("issue_type")), _prio_label(c.get("priority"))) if v)
+            for v in (c.get("lesson_date"), _issue_label(c.get("issue_type")),
+                      _prio_label(c.get("priority"))) if v)
         said = ""
         if c.get("original_sentence"):
             said = f'<div class="said">🗣 {_e(said_lab)} — {_e(c["original_sentence"])}</div>'
@@ -574,12 +577,73 @@ def toggle_history(collapsed, active_h, q, lang, month):
     return _expanded(q, lang, month, active_h) if collapsed else _collapsed(active_h, q, lang, month)
 
 
+_CARD_LIMIT = 60   # 카드 검색 탭이 한 번에 그리는 최대 장수
+
+
+def card_rows(q: str = "", lang: str = _ALL, issue: str = _ALL) -> tuple[list[dict], int]:
+    """카드 검색(2026-11-17): 회차가 아니라 카드 자체를 찾는다. 반환: (최근순 최대 _CARD_LIMIT 장, 전체 수).
+
+    검색어는 정답 문장·한국어 뜻·내 발화·설명·연습 패턴을 본다. "그 표현 뭐였더라"가 용도.
+    """
+    where, args = [], []
+    if lang and lang != _ALL:
+        where.append("l.language=?"); args.append(lang)
+    if issue and issue != _ALL:
+        where.append("ls.issue_type=?"); args.append(issue)
+    q = (q or "").strip()
+    if q:
+        like = f"%{q}%"
+        where.append("""(s.natural_sentence LIKE ? OR s.korean_meaning LIKE ? OR ls.original_sentence LIKE ?
+                         OR s.explanation_ko LIKE ? OR s.practice_pattern LIKE ?)""")
+        args += [like] * 5
+    sql = f"""SELECT s.natural_sentence, s.korean_meaning, s.explanation_ko,
+                     ls.issue_type, ls.priority, ls.card_type, ls.original_sentence, l.lesson_date
+              FROM lesson_sentences ls
+              JOIN sentences s ON s.dup_key = ls.dup_key
+              JOIN lessons l ON l.audio_hash = ls.audio_hash
+              {"WHERE " + " AND ".join(where) if where else ""}
+              ORDER BY l.lesson_date DESC, l.processed_at DESC, ls.rowid"""
+    db = _db()
+    try:
+        rows = [dict(r) for r in db.conn.execute(sql, args).fetchall()]
+    finally:
+        db.close()
+    return rows[:_CARD_LIMIT], len(rows)
+
+
+def issue_choices() -> list[tuple[str, str]]:
+    """카드 검색의 유형 필터: 전체 + DB에 실제로 있는 유형(많은 순)."""
+    db = _db()
+    try:
+        types = [r[0] for r in db.conn.execute(
+            """SELECT issue_type FROM lesson_sentences WHERE issue_type IS NOT NULL
+               GROUP BY issue_type ORDER BY COUNT(*) DESC""").fetchall()]
+    finally:
+        db.close()
+    return [(T("전체 유형", "All types"), _ALL)] + [(_issue_label(t), t) for t in types]
+
+
+def cards_view(q: str = "", lang: str = _ALL, issue: str = _ALL) -> str:
+    """카드 검색 탭 본문: 건수 한 줄 + 카드 목록."""
+    rows, total = card_rows(q, lang, issue)
+    if total > len(rows):
+        head = T(f"{total}장 중 최근 {len(rows)}장 — 검색어나 필터로 좁혀 보세요.",
+                 f"Showing the latest {len(rows)} of {total} cards — narrow it down.")
+    else:
+        head = T(f"{total}장", f"{total} cards")
+    return (f'<div class="sg-cap">{_e(head)}</div>'
+            + _cards_html(rows, note=False,
+                          empty=T("조건에 맞는 카드가 없습니다.", "No cards match.")))
+
+
 def home_view():
-    """접속 시·카드 생성 뒤에 같이 갱신되는 것: 현황 탭 + 이력 목록(필터 초기화, 펼침) + 월 선택지."""
+    """접속 시·카드 생성 뒤에 같이 갱신되는 것: 현황 탭 + 이력 목록(필터 초기화, 펼침) + 월 선택지
+    + 카드 검색 탭(필터 초기화)."""
     top, detail = dashboard_html()
     list_u, collapsed, label = _expanded("", _ALL, _ALL)
     return (top, detail, list_u, collapsed, label,
-            gr.update(choices=month_choices(), value=_ALL), "", _ALL)
+            gr.update(choices=month_choices(), value=_ALL), "", _ALL,
+            cards_view(), gr.update(choices=issue_choices(), value=_ALL), "", _ALL)
 
 
 def _transcript_file(lesson_date: str, audio_hash: str) -> Path | None:
@@ -1151,6 +1215,20 @@ def build_ui() -> gr.Blocks:
                     hist_state = gr.State()
                     hist_raw_open = gr.State(False)  # 전사 원본 펼침 여부(같은 버튼으로 토글)
 
+                with gr.Tab(T("카드", "Cards")):
+                    # 카드 검색(2026-11-17): 회차를 거치지 않고 카드를 바로 찾는다.
+                    card_q = gr.Textbox(show_label=False, max_lines=1,
+                                        placeholder=T("카드 검색 — 정답 문장, 한국어 뜻, 내 발화, 설명",
+                                                      "Search cards — sentence, Korean, what I said, explanation"))
+                    with gr.Row():
+                        card_lang = gr.Dropdown(show_label=False, scale=1, min_width=120, value=_ALL,
+                                                choices=[(T("전체 언어", "All languages"), _ALL),
+                                                         (T("영어", "English"), "en"),
+                                                         (T("중국어", "Chinese"), "zh")])
+                        card_issue = gr.Dropdown(show_label=False, scale=1, min_width=120, value=_ALL,
+                                                 choices=issue_choices())
+                    card_html = gr.HTML()
+
                 with gr.Tab(T("현황", "Stats")):
                     # 접속 때마다 DB에서 다시 그린다(demo.load / 카드 생성 뒤 .then).
                     dash_top = gr.HTML()
@@ -1197,8 +1275,11 @@ def build_ui() -> gr.Blocks:
                                     outputs=[result_html, apkg_out, obsidian_md], concurrency_limit=1)
         if not DEMO_MODE:
             list_outputs = [history, hist_collapsed, hist_toggle]
-            home_outputs = [dash_top, dash_detail, *list_outputs, hist_month, hist_q, hist_lang]
+            home_outputs = [dash_top, dash_detail, *list_outputs, hist_month, hist_q, hist_lang,
+                            card_html, card_issue, card_q, card_lang]
             cards_evt.then(home_view, outputs=home_outputs)  # 새 회차 즉시 반영
+            for comp in (card_q, card_lang, card_issue):
+                comp.change(cards_view, inputs=[card_q, card_lang, card_issue], outputs=card_html)
             history.select(on_history_select, inputs=[hist_collapsed, hist_q, hist_lang, hist_month],
                            outputs=[*list_outputs,
                                     hist_detail, hist_apkg, hist_txt, hist_raw_btn, hist_raw,
