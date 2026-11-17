@@ -1,0 +1,11 @@
+# 개인 설정·데이터·녹음은 절대 올리지 않는다
+config.yaml
+data/
+work/
+output/
+sounds/
+*.m4a
+*.wav
+*.apkg
+.venv/
+__pycache__/

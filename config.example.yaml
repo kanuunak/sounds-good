@@ -1,0 +1,50 @@
+# sounds good 설정 예시 — 이 파일을 config.yaml 로 복사해서 고쳐 쓰세요.
+#   cp config.example.yaml config.yaml
+# "env:이름" 은 그 환경변수에서 값을 읽는다는 뜻입니다(키를 파일에 적지 않기 위해).
+
+# ── 저장 위치 ────────────────────────────────────────────────────────────────
+work_dir: "./work"              # 단계별 중간 결과(캐시). 지워도 다시 만들어집니다.
+db_path: "./data/history.db"    # 누적 이력(원본). 이 파일은 백업하세요.
+output_dir: "./output"          # Anki .apkg 가 생기는 곳
+
+# ── Anki ─────────────────────────────────────────────────────────────────────
+anki_deck_name: "English Speaking"
+anki_deck_name_zh: "Chinese Speaking"
+max_cards_per_lesson: 15
+max_cards_per_issue_type: 5
+card_validation: true           # 카드 검증+수리(수업당 LLM 호출 +1~2회). 끄지 않는 것을 권합니다.
+
+# ── 전사(WhisperX) ───────────────────────────────────────────────────────────
+whisper_model: "large-v3"
+# whisper_batch_size: 4         # GPU 메모리가 부족하면 2 또는 1
+bandpass_filter: true           # 전화 통화 녹음이면 true, 일반 마이크 녹음이면 false
+hf_token: "env:HF_TOKEN"        # 화자분리 모델(pyannote) 이용 동의 후 받은 HuggingFace 토큰
+
+# ── 분석 LLM: 아래 둘 중 하나를 고르세요 ─────────────────────────────────────
+# (A) 로컬 모델 — 무료, 밖으로 아무것도 안 나감. llama.cpp 설치 필요.
+llm_provider: "llama_cpp"
+llm_model: "qwen3.5-9b"         # 표시용 이름(실제 모델은 아래 명령이 정합니다)
+llm_base_url: "http://127.0.0.1:8080"
+llm_max_tokens: 7000
+# 분석할 때만 서버를 띄웠다가 끝나면 내립니다(전사와 GPU 메모리를 나눠 쓰기 위해).
+# 첫 실행 때 모델(약 5.7GB)을 내려받습니다. --reasoning-budget 을 0 으로 끄지 마세요(가짜 카드가 생깁니다).
+llama_server_cmd: "llama-server -hf unsloth/Qwen3.5-9B-GGUF:Q4_K_M --no-mmproj --host 127.0.0.1 --port 8080 -c 16384 -ngl 99 --reasoning-budget 3000"
+
+# (B) Claude 구독 — 품질이 가장 좋음. Claude Code 가 설치·로그인돼 있으면 API 키 없이 됩니다.
+#     전사 내용이 Anthropic 으로 전송됩니다. 쓰려면 위 (A) 5줄을 지우고 아래 2줄의 # 을 떼세요.
+# llm_provider: "claude_cli"
+# llm_model: "claude-opus-5"
+
+# 기본 provider 가 실패했을 때 순서대로 시도할 대체 모델(선택)
+# llm_fallbacks:
+#   - {provider: "gemini", model: "gemini-3.6-flash"}
+gemini_api_key: "env:GEMINI_API_KEY"
+anthropic_api_key: "env:ANTHROPIC_API_KEY"
+openai_api_key: "env:OPENAI_API_KEY"
+
+# ── Obsidian (선택) — 쓰지 않으면 주석 그대로 두세요 ─────────────────────────
+# vault_path: "/path/to/ObsidianVault/전화영어 복습"       # 영어 수업 노트가 쌓일 폴더(미리 만들어 두세요)
+# vault_path_zh: "/path/to/ObsidianVault/전화중국어 복습"  # 중국어 수업용
+
+# ── 기타 (선택) ──────────────────────────────────────────────────────────────
+# research_log: true            # 실행마다 전사·프롬프트·LLM 원응답을 data/research/ 에 보존
