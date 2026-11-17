@@ -25,6 +25,8 @@
 
 ## 설치
 
+> 처음이라면 **[SETUP.md](SETUP.md)** 를 보세요. WSL2 준비, HuggingFace 가입·모델 동의·토큰 등록, Anki 로 가져오기까지 한 단계씩 적어 두었고, 막혔을 때 보는 증상별 표가 있습니다. 아래는 요약입니다.
+
 ```bash
 git clone https://github.com/kanuunak/sounds-good.git
 cd sounds-good

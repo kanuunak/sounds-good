@@ -167,7 +167,17 @@ def run(wav_path: Path, audio_hash: str, cfg: dict, source_filename: str,
         diarize_df = diarize_model(audio, min_speakers=2, max_speakers=2)
         result = whisperx.assign_word_speakers(diarize_df, result)
     except Exception as e:
-        # 화자분리 자체 실패: 전체 UNKNOWN으로 저장하고 진행. 중단 판단은 main(S8)이 한다.
+        # 모델 이용 동의·토큰 문제는 '화자분리 실패'로 저장하면 안 된다(2026-11-17): 실패한 전사가 캐시에 남아
+        # 토큰을 고친 뒤에도 계속 '화자분리 전체 실패'로 나온다. 원인을 알려 주고 여기서 멈춘다.
+        msg = f"{type(e).__name__}: {e}".lower()
+        if any(k in msg for k in ("401", "403", "gated", "unauthorized", "access to model",
+                                  "token", "could not download")):
+            raise RuntimeError(
+                "[transcribe] 화자 구분 모델을 받지 못했습니다. HuggingFace 에서 "
+                "pyannote/speaker-diarization-3.1 과 pyannote/segmentation-3.0 두 모델의 이용 조건에 모두 "
+                "동의했는지, HF_TOKEN 이 올바른지 확인하세요 (SETUP.md 3단계)."
+            ) from e
+        # 그 밖의 화자분리 실패: 전체 UNKNOWN으로 저장하고 진행. 중단 판단은 main(S8)이 한다.
         print(f"[transcribe] 경고: 화자분리 실패 → 전체 UNKNOWN 처리합니다: {e}")
 
     word_segments = result.get("word_segments", []) or []

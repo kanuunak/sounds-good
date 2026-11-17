@@ -393,7 +393,12 @@ def _ensure_llama_server(cfg: dict, base: str) -> None:
     import shlex
     log_path = Path(tempfile.gettempdir()) / "sounds-good-llama-server.log"
     print(f"[analyze] 로컬 모델 서버를 띄웁니다(첫 실행은 모델 다운로드로 오래 걸립니다). 로그: {log_path}")
-    proc = subprocess.Popen(shlex.split(cmd), stdout=log_path.open("ab"), stderr=subprocess.STDOUT)
+    try:
+        proc = subprocess.Popen(shlex.split(cmd), stdout=log_path.open("ab"), stderr=subprocess.STDOUT)
+    except FileNotFoundError as e:
+        raise RuntimeError(
+            "[analyze] llama.cpp 서버에 연결하지 못했습니다: llama-server 실행 파일을 찾을 수 없습니다. "
+            "llama.cpp 를 설치했는지 `llama-server --version` 으로 확인하세요 (SETUP.md 4-A).") from e
     _LLAMA_STARTED.append(proc)
     deadline = time.time() + int(cfg.get("llama_server_wait", 1800))
     while time.time() < deadline:

@@ -756,8 +756,15 @@ def step1_transcribe(file_obj, lang):
         yield html, radio, state, gr.update(visible=True)
     except Exception as e:
         print(f"[web:step1] 오류: {e}")
-        yield (_status(T("처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
-                         "Something went wrong. Please try again in a moment."), "err"),
+        # 단계 코드가 직접 쓴 안내("[convert] ffmpeg를 …", "[transcribe] HF_TOKEN …")는 다음에 할 일이
+        # 적혀 있으므로 그대로 보여 준다. 처음 설치한 사람이 '처리 중 오류'만 보고 막히던 자리(2026-11-17).
+        own = str(e).strip()
+        if own.startswith("[convert]") or own.startswith("[transcribe]"):
+            text = own.split("\n")[0][:300]
+        else:
+            text = T("처리 중 오류가 발생했습니다. 실행한 터미널(또는 로그)의 마지막 줄을 확인하세요.",
+                     "Something went wrong. Check the last lines of the terminal or log.")
+        yield (_status(text, "err"),
                gr.update(choices=[], visible=False), None, hidden)
 
 
